@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste WebSocket</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<input id="msg" placeholder="Digite algo"/>
+<button onclick="send()">Enviar</button>
+
+<ul id="messages"></ul>
+
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs/lib/stomp.min.js"></script>
+
+<script>
+    let stompClient = null;
+
+    function connect() {
+        const socket = new SockJS("http://localhost:8080/ws");
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function () {
+            console.log("Conectado!");
+
+            stompClient.subscribe("/topic/document", function (message) {
+                const li = document.createElement("li");
+                li.innerText = message.body;
+                document.getElementById("messages").appendChild(li);
+            });
+        });
+    }
+
+    function send() {
+        const msg = document.getElementById("msg").value;
+
+        stompClient.send("/app/edit", {}, JSON.stringify({
+            documentId: "1",
+            content: msg
+        }));
+    }
+
+    connect();
+</script>
+
+</body>
+</html>
