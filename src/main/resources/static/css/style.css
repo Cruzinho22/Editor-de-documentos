@@ -1,0 +1,131 @@
+/* Reset básico */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Fundo geral */
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: linear-gradient(to right, #1e3c72, #2a5298);
+    color: #333;
+    min-height: 100vh;
+}
+
+/* Título */
+h1 {
+    color: white;
+    margin-bottom: 20px;
+}
+
+/* Toolbar */
+.container {
+    margin-bottom: 20px;
+}
+
+/* Inputs */
+input {
+    padding: 10px 14px;
+    width: 260px;
+    border-radius: 8px;
+    border: none;
+    outline: none;
+
+    font-size: 14px;
+}
+
+/* Botões */
+button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #00c6ff, #0072ff);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    margin-left: 10px;
+
+    transition: all 0.2s ease;
+}
+
+button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+/* Lista (caso ainda use) */
+ul {
+    list-style: none;
+    padding: 0;
+}
+
+li {
+    background: rgba(255, 255, 255, 0.15);
+    margin: 10px auto;
+    padding: 10px;
+    width: 320px;
+    border-radius: 8px;
+    color: white;
+}
+
+/* Container do editor */
+.editor-container {
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+}
+
+/* "Folha" do documento */
+#editor {
+    background: white;
+    width: 800px;
+    min-height: 1000px;
+    padding: 50px;
+
+    border-radius: 12px;
+
+    /* sombra mais bonita */
+    box-shadow: 
+        0 10px 25px rgba(0,0,0,0.2),
+        0 2px 5px rgba(0,0,0,0.1);
+
+    outline: none;
+
+    font-size: 16px;
+    line-height: 1.8;
+    color: #222;
+
+    /* animação suave */
+    transition: box-shadow 0.2s ease;
+}
+
+/* Efeito ao focar */
+#editor:focus {
+    box-shadow: 
+        0 12px 30px rgba(0,0,0,0.25),
+        0 4px 10px rgba(0,0,0,0.15);
+}
+
+/* Placeholder fake (quando vazio) */
+#editor:empty::before {
+    content: "Comece a digitar seu documento...";
+    color: #aaa;
+}
+
+/* Tela inicial */
+.home-screen {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+
+    color: white;
+}
+
+/* Esconder elementos */
+.hidden {
+    display: none;
+}

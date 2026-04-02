@@ -1,4 +1,4 @@
-package collab_editor;
+package collabeditor;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
