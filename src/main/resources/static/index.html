@@ -8,12 +8,24 @@
 
 <div id="home" class="home-screen">
     <h1>Editor Colaborativo</h1>
-    <button onclick="app.criarDocumento()">Criar Novo Documento</button>
+    <button onclick="app.abrirModal()">Criar Novo Documento</button>
 
     <div class="autocomplete">
-  <input id="docInput" type="text" placeholder="Pesquisar documento...">
+        <input id="docInput" type="text" placeholder="Pesquisar documento..." oninput="app.filtrarDocumentos()">
     </div>
 
+    <div id="listaDocumentos"></div>
+</div>
+
+<div id="modalNome" class="modal hidden">
+  <div class="modal-content">
+    <h2>Novo Documento</h2>
+    <input type="text" id="inputNome" placeholder="Digite o nome..." />
+    <div class="modal-buttons">
+      <button onclick="app.confirmarNome()">Criar</button>
+      <button onclick="app.fecharModal()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <div id="editorPage" class="hidden">
@@ -24,7 +36,6 @@
     <div class="editor-container">
         <div id="editor" contenteditable="true"></div>
     </div>
-
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
@@ -32,5 +43,4 @@
 <script src="/js/app.js"></script>
 
 </body>
-
 </html>

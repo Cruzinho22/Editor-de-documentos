@@ -25,6 +25,11 @@ public class DocumentService {
                 .orElseThrow(() -> new BadRequestException("Documento não achada"));
     }
 
+    public DocumentEntity findByName(String name){
+        return this.documentRepository.findByName(name)
+                .orElseThrow(()-> new BadRequestException("Documento não existe ou nome está incorreto"));
+    }
+
     @Transactional
     public DocumentEntity save(DocumentEntity documentEntity) {
         return this.documentRepository.save(documentEntity);
@@ -42,9 +47,9 @@ public class DocumentService {
 
     @Transactional
     public DocumentEntity applyEdit(EditMessage message) {
-        DocumentEntity doc = new DocumentEntity();
+        DocumentEntity doc = findById(message.getDocumentId());
         doc.setContent(message.getContent());
-        doc.setId(message.getDocumentId());
+//        doc.setSenderId(message.getSenderId());
         return documentRepository.save(doc);
     }
 
