@@ -12,14 +12,12 @@ import lombok.NoArgsConstructor;
 public class DocumentEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY) // O banco gera o ID para você
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(columnDefinition = "TEXT") // Dica: para conteúdos longos, use TEXT
+    @Column(columnDefinition = "TEXT")
     private String content;
 
     private String name;
 
-    // Removi o SenderId daqui, pois o ID do remetente costuma
-    // ser parte da mensagem (transiente), não do documento fixo no banco.
 }

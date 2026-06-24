@@ -1,0 +1,125 @@
+services:
+  # --- PGPOOL-II (RESOLVIDO SEM SCRAM) ---
+  postgres-pgpool:
+    image: pgpool/pgpool:latest
+    container_name: postgres-pgpool
+    ports:
+      - "5432:9999"
+    depends_on:
+      - postgres-primary
+      - postgres-replica
+    environment:
+      - PGPOOL_PARAMS_BACKEND_HOSTNAME0=postgres-primary
+      - PGPOOL_PARAMS_BACKEND_PORT0=5432
+      - PGPOOL_PARAMS_BACKEND_HOSTNAME1=postgres-replica
+      - PGPOOL_PARAMS_BACKEND_PORT1=5432
+      - PGPOOL_PARAMS_ENABLE_LOAD_BALANCE=on
+
+      # MUDANÇA CRUCIAL: Desativa validações de criptografia pesada locais
+      - PGPOOL_PARAMS_ALLOW_CLEAR_TEXT_AUTH=on
+      - PGPOOL_KEY_IN_FILE=off
+      - PGPOOL_PARAMS_ENABLE_POOL_HBA=off
+      - PGPOOL_PARAMS_CONNECTION_CACHE=off
+
+      # Aponta para o banco correto
+      - PGPOOL_PARAMS_PRIMARY_DATABASE_NAME=editor_colaborativo
+      - PGPOOL_PARAMS_HEALTH_CHECK_DATABASE=editor_colaborativo
+
+      # Credenciais simplificadas para bypassar o SCRAM do driver
+      - PGPOOL_PARAMS_SR_CHECK_USER=luccas_user
+      - PGPOOL_PARAMS_SR_CHECK_PASSWORD=editor_password
+      - PGPOOL_PARAMS_SR_CHECK_DATABASE=editor_colaborativo
+      - PGPOOL_PARAMS_HEALTH_CHECK_USER=luccas_user
+      - PGPOOL_PARAMS_HEALTH_CHECK_PASSWORD=editor_password
+    healthcheck:
+      # Simplificado para apenas bater na porta sem exigir login complexo com senha
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "9999"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - collab-network
+
+  # --- BANCO PRIMÁRIO ---
+  postgres-primary:
+    image: postgres:16-alpine
+    container_name: postgres-primary
+    environment:
+      - POSTGRES_DB=editor_colaborativo
+      - POSTGRES_USER=luccas_user
+      - POSTGRES_PASSWORD=editor_password
+      # ADICIONE ESTA LINHA:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+    networks:
+      - collab-network
+
+  # --- BANCO RÉPLICA ---
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: postgres-replica
+    environment:
+      - POSTGRES_DB=editor_colaborativo
+      - POSTGRES_USER=luccas_user
+      - POSTGRES_PASSWORD=editor_password
+      # ADICIONE ESTA LINHA:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    networks:
+      - collab-network
+
+  # --- INSTÂNCIA JAVA 1 ---
+  collab-app-1:
+    image: collab-editor-app-instance-1
+    container_name: collab-app-1
+    depends_on:
+      postgres-pgpool:
+        condition: service_healthy
+    environment:
+      # Trocado de 5432 para 9999 para conversar direto na porta interna do Pgpool
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-pgpool:9999/editor_colaborativo
+      - SPRING_DATASOURCE_USERNAME=luccas_user
+      - SPRING_DATASOURCE_PASSWORD=editor_password
+    restart: on-failure
+    networks:
+      - collab-network
+
+  # --- INSTÂNCIA JAVA 2 ---
+  collab-app-2:
+    image: collab-editor-app-instance-2
+    container_name: collab-app-2
+    depends_on:
+      postgres-pgpool:
+        condition: service_healthy
+    environment:
+      # Trocado de 5432 para 9999 para conversar direto na porta interna do Pgpool
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-pgpool:9999/editor_colaborativo
+      - SPRING_DATASOURCE_USERNAME=luccas_user
+      - SPRING_DATASOURCE_PASSWORD=editor_password
+    restart: on-failure
+    networks:
+      - collab-network
+
+  # --- PROXY NGINX ---
+  collab-nginx:
+    image: nginx:alpine
+    container_name: collab-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - collab-app-1
+      - collab-app-2
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - collab-network
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+
+networks:
+  collab-network:

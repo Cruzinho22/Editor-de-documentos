@@ -8,7 +8,7 @@ const app = {
     clientId: Math.random().toString(36).substring(7),
 
 connect() {
-    const socket = new SockJS("http://localhost:8080/ws");
+    const socket = new SockJS("/ws");
     this.stompClient = Stomp.over(socket);
 
     this.stompClient.connect(
@@ -71,7 +71,7 @@ fecharModal() {
     async buscarDocumentos() {
 
         try {
-            const response = await fetch("http://localhost:8080/documents");
+            const response = await fetch("/documents");
 
             if (!response.ok) {
                 throw new Error("Erro na requisição");
@@ -129,7 +129,7 @@ fecharModal() {
         document.getElementById("editorPage").classList.remove("hidden");
 
         try {
-            const response = await fetch(`http://localhost:8080/documents/${id}`);
+            const response = await fetch(`/documents/${id}`);
             const doc = await response.json();
 
             this.documentoAtual = doc; 
@@ -187,7 +187,7 @@ async confirmarNome() {
     }
 
     try {
-        const response = await fetch("http://localhost:8080/documents/criarDocumento", {
+        const response = await fetch("/documents/criarDocumento", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name: nome }) 
