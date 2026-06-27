@@ -1,9 +1,13 @@
+/* === RESET GLOBAL === */
+/* Remove margens, paddings e garante que padding/border não aumentam o tamanho dos elementos */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+/* === BODY === */
+/* Fonte padrão, fundo em gradiente azul da esquerda para direita, texto escuro e altura mínima de tela cheia */
 body {
     font-family: 'Segoe UI', Arial, sans-serif;
     background: linear-gradient(to right, #1e3c72, #2a5298);
@@ -11,6 +15,7 @@ body {
     min-height: 100vh;
 }
 
+/* === TÍTULO PRINCIPAL === */
 h1 {
     color: white;
     margin-bottom: 20px;
@@ -21,24 +26,25 @@ h1 {
     margin-bottom: 20px;
 }
 
-/* Inputs */
+/* === INPUTS === */
+/* Estilo base para todos os campos de texto */
 input {
     padding: 10px 14px;
     width: 260px;
     border-radius: 8px;
     border: none;
     outline: none;
-
     font-size: 14px;
 }
 
+/* Wrapper do input com autocomplete — precisa de position: relative para o dropdown se posicionar corretamente */
 .autocomplete {
     position: relative;
     display: inline-block;
 }
 
-
-/* Botões */
+/* === BOTÕES === */
+/* Estilo padrão: gradiente azul, texto branco, animação suave no hover */
 button {
     padding: 10px 16px;
     border: none;
@@ -48,21 +54,22 @@ button {
     font-weight: 600;
     cursor: pointer;
     margin-left: 10px;
-
     transition: all 0.2s ease;
 }
 
+/* Leve elevação ao passar o mouse */
 button:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 
-/* Lista (caso ainda use) */
+/* === LISTA (caso ainda use) === */
 ul {
     list-style: none;
     padding: 0;
 }
 
+/* Itens com fundo semitransparente branco sobre o gradiente do body */
 li {
     background: rgba(255, 255, 255, 0.15);
     margin: 10px auto;
@@ -72,50 +79,49 @@ li {
     color: white;
 }
 
-/* Container do editor */
+/* === CONTAINER DO EDITOR === */
+/* Centraliza a "folha" do documento na tela */
 .editor-container {
     display: flex;
     justify-content: center;
     padding: 40px 20px;
 }
 
-/* "Folha" do documento */
+/* === EDITOR (folha do documento) === */
+/* Simula uma folha de papel: fundo branco, largura fixa, sombra e espaçamento interno generoso */
 #editor {
     background: white;
     width: 800px;
     min-height: 1000px;
     padding: 50px;
-
     border-radius: 12px;
-
-    /* sombra mais bonita */
-    box-shadow: 
-        0 10px 25px rgba(0,0,0,0.2),
-        0 2px 5px rgba(0,0,0,0.1);
-
+    /* Sombra em camadas para profundidade mais realista */
+    box-shadow:
+            0 10px 25px rgba(0,0,0,0.2),
+            0 2px 5px rgba(0,0,0,0.1);
     outline: none;
-
     font-size: 16px;
     line-height: 1.8;
     color: #222;
-
-    /* animação suave */
+    /* Transição suave da sombra ao focar */
     transition: box-shadow 0.2s ease;
 }
 
-/* Efeito ao focar */
+/* Sombra mais intensa quando o editor está em foco */
 #editor:focus {
-    box-shadow: 
-        0 12px 30px rgba(0,0,0,0.25),
-        0 4px 10px rgba(0,0,0,0.15);
+    box-shadow:
+            0 12px 30px rgba(0,0,0,0.25),
+            0 4px 10px rgba(0,0,0,0.15);
 }
 
+/* Placeholder via CSS — aparece quando o editor está vazio */
 #editor:empty::before {
     content: "Comece a digitar seu documento...";
     color: #aaa;
 }
 
-/* Tela inicial */
+/* === TELA INICIAL === */
+/* Centraliza o conteúdo vertical e horizontalmente na tela cheia */
 .home-screen {
     height: 100vh;
     display: flex;
@@ -123,42 +129,46 @@ li {
     justify-content: center;
     align-items: center;
     gap: 20px;
-
     color: white;
 }
 
-/* Esconder elementos */
+/* === UTILITÁRIO: OCULTAR ELEMENTOS === */
 .hidden {
     display: none;
 }
 
+/* === MODAL (overlay) === */
+/* Cobre toda a tela com fundo escuro semitransparente e centraliza o conteúdo */
 .modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.5);
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
+/* Duplicata de .hidden — pode ser consolidada futuramente */
 .hidden {
-  display: none;
+    display: none;
 }
 
+/* === CONTEÚDO DO MODAL === */
 .modal-content {
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-  width: 300px;
-  text-align: center;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    width: 300px;
+    text-align: center;
 }
 
+/* === BOTÕES DO MODAL === */
+/* Distribui os botões com espaço uniforme entre eles */
 .modal-buttons {
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-around;
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-around;
 }
