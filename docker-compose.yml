@@ -1,5 +1,4 @@
 services:
-  # --- PGPOOL-II (RESOLVIDO SEM SCRAM) ---
   postgres-pgpool:
     image: pgpool/pgpool:latest
     container_name: postgres-pgpool
@@ -9,37 +8,39 @@ services:
       - postgres-primary
       - postgres-replica
     environment:
-      - PGPOOL_PARAMS_BACKEND_HOSTNAME0=postgres-primary
+      - PGPOOL_PARAMS_BACKEND_HOSTNAME0=172.31.25.2
       - PGPOOL_PARAMS_BACKEND_PORT0=5432
-      - PGPOOL_PARAMS_BACKEND_HOSTNAME1=postgres-replica
+      - PGPOOL_PARAMS_BACKEND_HOSTNAME1=172.31.25.3
       - PGPOOL_PARAMS_BACKEND_PORT1=5432
       - PGPOOL_PARAMS_ENABLE_LOAD_BALANCE=on
 
-      # MUDANÇA CRUCIAL: Desativa validações de criptografia pesada locais
       - PGPOOL_PARAMS_ALLOW_CLEAR_TEXT_AUTH=on
       - PGPOOL_KEY_IN_FILE=off
       - PGPOOL_PARAMS_ENABLE_POOL_HBA=off
       - PGPOOL_PARAMS_CONNECTION_CACHE=off
 
-      # Aponta para o banco correto
       - PGPOOL_PARAMS_PRIMARY_DATABASE_NAME=editor_colaborativo
       - PGPOOL_PARAMS_HEALTH_CHECK_DATABASE=editor_colaborativo
 
-      # Credenciais simplificadas para bypassar o SCRAM do driver
-      - PGPOOL_PARAMS_SR_CHECK_USER=luccas_user
+      - PGPOOL_PARAMS_SR_CHECK_USER=postgres
       - PGPOOL_PARAMS_SR_CHECK_PASSWORD=editor_password
       - PGPOOL_PARAMS_SR_CHECK_DATABASE=editor_colaborativo
-      - PGPOOL_PARAMS_HEALTH_CHECK_USER=luccas_user
+      - PGPOOL_PARAMS_HEALTH_CHECK_USER=postgres
       - PGPOOL_PARAMS_HEALTH_CHECK_PASSWORD=editor_password
+
+      - PGPOOL_PARAMS_FAILOVER_ON_BACKEND_ERROR=off
+      - PGPOOL_PARAMS_HEALTH_CHECK_MAX_RETRY=10
+      - PGPOOL_PARAMS_HEALTH_CHECK_RETRY_DELAY=3
+      - PGPOOL_PARAMS_CONNECT_TIMEOUT=5
     healthcheck:
-      # Simplificado para apenas bater na porta sem exigir login complexo com senha
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "9999"]
       interval: 3s
       timeout: 3s
       retries: 5
       start_period: 5s
     networks:
-      - collab-network
+      collab-network:
+        ipv4_address: 172.31.25.4
 
   # --- BANCO PRIMÁRIO ---
   postgres-primary:
@@ -47,29 +48,49 @@ services:
     container_name: postgres-primary
     environment:
       - POSTGRES_DB=editor_colaborativo
-      - POSTGRES_USER=luccas_user
+      - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=editor_password
-      # ADICIONE ESTA LINHA:
       - POSTGRES_HOST_AUTH_METHOD=trust
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /docker-entrypoint-initdb.d
+        echo "CREATE USER luccas_user WITH SUPERUSER PASSWORD 'editor_password';" > /docker-entrypoint-initdb.d/01_init.sql
+        echo 'echo "host replication all 0.0.0.0/0 trust" >> /var/lib/postgresql/data/pg_hba.conf' > /docker-entrypoint-initdb.d/02_hba.sh
+        
+        exec docker-entrypoint.sh postgres -c wal_level=replica -c max_wal_senders=10 -c max_replication_slots=10
     volumes:
       - postgres_primary_data:/var/lib/postgresql/data
     networks:
-      - collab-network
+      collab-network:
+        ipv4_address: 172.31.25.2
 
   # --- BANCO RÉPLICA ---
   postgres-replica:
     image: postgres:16-alpine
     container_name: postgres-replica
+    depends_on:
+      - postgres-primary
     environment:
-      - POSTGRES_DB=editor_colaborativo
-      - POSTGRES_USER=luccas_user
       - POSTGRES_PASSWORD=editor_password
-      # ADICIONE ESTA LINHA:
       - POSTGRES_HOST_AUTH_METHOD=trust
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          until pg_isready -h 172.31.25.2 -p 5432 -U postgres; do sleep 2; done
+          pg_basebackup -h 172.31.25.2 -D /var/lib/postgresql/data -U postgres -v -P -R -X stream
+          chown -R postgres:postgres /var/lib/postgresql/data
+          chmod 700 /var/lib/postgresql/data # CORREÇÃO: Força a permissão exigida pelo Postgres
+        fi
+        exec gosu postgres postgres
     volumes:
       - postgres_replica_data:/var/lib/postgresql/data
     networks:
-      - collab-network
+      collab-network:
+        ipv4_address: 172.31.25.3
 
   # --- INSTÂNCIA JAVA 1 ---
   collab-app-1:
@@ -79,7 +100,6 @@ services:
       postgres-pgpool:
         condition: service_healthy
     environment:
-      # Trocado de 5432 para 9999 para conversar direto na porta interna do Pgpool
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-pgpool:9999/editor_colaborativo
       - SPRING_DATASOURCE_USERNAME=luccas_user
       - SPRING_DATASOURCE_PASSWORD=editor_password
@@ -95,7 +115,6 @@ services:
       postgres-pgpool:
         condition: service_healthy
     environment:
-      # Trocado de 5432 para 9999 para conversar direto na porta interna do Pgpool
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-pgpool:9999/editor_colaborativo
       - SPRING_DATASOURCE_USERNAME=luccas_user
       - SPRING_DATASOURCE_PASSWORD=editor_password
@@ -123,3 +142,6 @@ volumes:
 
 networks:
   collab-network:
+    ipam:
+      config:
+        - subnet: 172.31.25.0/24
