@@ -4,9 +4,13 @@ import collabeditor.document.dto.EditMessage;
 import collabeditor.document.model.DocumentEntity;
 import collabeditor.document.repository.DocumentRepository;
 import collabeditor.exception.BadRequestException;
+import collabeditor.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -22,7 +26,7 @@ public class DocumentService {
 
     public DocumentEntity findById(long id) {
         return this.documentRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Documento não achada"));
+                .orElseThrow(() -> new NotFoundException("Documento não encontrado"));
     }
 
     public DocumentEntity findByName(String name){
@@ -36,7 +40,15 @@ public class DocumentService {
     }
 
     public void delete(Long id) {
-        this.documentRepository.delete(findById(id));
+        DocumentEntity doc = findById(id);
+        String usuarioAtual = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+
+        if (!doc.getDono().equals(usuarioAtual)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Sem permissão");
+        }
+
+        documentRepository.delete(doc);
     }
 
     public void replace(DocumentEntity documentEntity) {

@@ -1,6 +1,6 @@
 services:
   postgres-pgpool:
-    image: pgpool/pgpool:latest
+    image: pgpool/pgpool:4.4.2
     container_name: postgres-pgpool
     ports:
       - "5432:9999"
@@ -85,7 +85,7 @@ services:
           chown -R postgres:postgres /var/lib/postgresql/data
           chmod 700 /var/lib/postgresql/data # CORREÇÃO: Força a permissão exigida pelo Postgres
         fi
-        exec gosu postgres postgres
+        exec docker-entrypoint.sh postgres
     volumes:
       - postgres_replica_data:/var/lib/postgresql/data
     networks:
@@ -94,6 +94,7 @@ services:
 
   # --- INSTÂNCIA JAVA 1 ---
   collab-app-1:
+    build: .
     image: collab-editor-app-instance-1
     container_name: collab-app-1
     depends_on:
@@ -109,6 +110,7 @@ services:
 
   # --- INSTÂNCIA JAVA 2 ---
   collab-app-2:
+    build: .
     image: collab-editor-app-instance-2
     container_name: collab-app-2
     depends_on:

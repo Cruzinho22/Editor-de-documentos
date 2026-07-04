@@ -19,5 +19,6 @@ public class DocumentEntity {
     private String content;
 
     private String name;
+    private String dono;
 
 }

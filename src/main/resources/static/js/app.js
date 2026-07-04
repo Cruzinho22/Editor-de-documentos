@@ -1,30 +1,132 @@
 const app = {
-    // Cliente STOMP para comunicação WebSocket
     stompClient: null,
-    // ID do documento atualmente aberto
     documentId: 0,
-    // Referência à subscription ativa no tópico do documento
     subscription: null,
-    // Último conteúdo conhecido do editor (evita envios desnecessários)
     lastContent: "",
-    // ID de documento pendente, caso a conexão ainda não esteja pronta
     pendingSubscribe: null,
-
-    // ID único deste cliente, usado para ignorar as próprias mensagens recebidas via WebSocket
+    isConnected: false,
     clientId: Math.random().toString(36).substring(7),
 
-    // Inicia a conexão WebSocket com o servidor via SockJS + STOMP
+    // Retorna o token salvo no sessionStorage
+    getToken() {
+        return sessionStorage.getItem("token");
+    },
+
+    // Monta o header Authorization para as requisições
+    authHeader() {
+        return {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${this.getToken()}`
+        };
+    },
+
+    // === AUTENTICAÇÃO ===
+
+    async login() {
+        const username = document.getElementById("loginUsername").value.trim();
+        const password = document.getElementById("loginPassword").value;
+
+        if (!username || !password) {
+            alert("Preencha usuário e senha.");
+            return;
+        }
+
+        this.setLoading(true);
+        try {
+            const response = await fetch("/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!response.ok) throw new Error("Usuário ou senha inválidos.");
+
+            const data = await response.json();
+            sessionStorage.setItem("token", data.token);
+
+            this.mostrarHome();
+            this.buscarDocumentos();
+            this.connect();
+
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            this.setLoading(false);
+        }
+    },
+
+    async registrar() {
+        const username = document.getElementById("registerUsername").value.trim();
+        const password = document.getElementById("registerPassword").value;
+
+        if (!username || !password) {
+            alert("Preencha usuário e senha.");
+            return;
+        }
+
+        this.setLoading(true);
+        try {
+            const response = await fetch("/auth/registrar", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!response.ok) throw new Error("Erro ao criar conta. Tente outro usuário.");
+
+            const data = await response.json();
+            sessionStorage.setItem("token", data.token);
+
+            this.mostrarHome();
+            this.buscarDocumentos();
+            this.connect();
+
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            this.setLoading(false);
+        }
+    },
+
+    logout() {
+        sessionStorage.removeItem("token");
+        if (this.stompClient) this.stompClient.disconnect();
+        this.isConnected = false;
+        this.mostrarLogin();
+    },
+
+    // === NAVEGAÇÃO ENTRE TELAS ===
+
+    mostrarLogin() {
+        document.getElementById("loginScreen").classList.remove("hidden");
+        document.getElementById("registerScreen").classList.add("hidden");
+        document.getElementById("home").classList.add("hidden");
+    },
+
+    mostrarRegistro() {
+        document.getElementById("registerScreen").classList.remove("hidden");
+        document.getElementById("loginScreen").classList.add("hidden");
+        document.getElementById("home").classList.add("hidden");
+    },
+
+    mostrarHome() {
+        document.getElementById("home").classList.remove("hidden");
+        document.getElementById("loginScreen").classList.add("hidden");
+        document.getElementById("registerScreen").classList.add("hidden");
+    },
+
+    // === WEBSOCKET ===
+
     connect() {
         const socket = new SockJS("/ws");
         this.stompClient = Stomp.over(socket);
+        this.stompClient.debug = null;
 
         this.stompClient.connect(
             {},
             () => {
                 console.log("Conectado ao servidor!");
                 this.isConnected = true;
-
-                // Se havia um subscribe aguardando a conexão, executa agora
                 if (this.pendingSubscribe !== null) {
                     this.subscribe(this.pendingSubscribe);
                     this.pendingSubscribe = null;
@@ -32,41 +134,34 @@ const app = {
             },
             (error) => {
                 console.error("Erro na conexão:", error);
+                this.isConnected = false;
+                setTimeout(() => this.connect(), 3000);
             }
         );
     },
 
-    // Inscreve o cliente no tópico STOMP do documento para receber atualizações em tempo real
     subscribe(documentId) {
-        // Conexão ainda não estabelecida: guarda o ID para executar depois
         if (!this.isConnected) {
-            console.warn("Conexão ainda não pronta, aguardando...");
             this.pendingSubscribe = documentId;
             return;
         }
-
-        // Cancela subscription anterior, se existir
         if (this.subscription) {
             this.subscription.unsubscribe();
+            this.subscription = null;
         }
-
         this.subscription = this.stompClient.subscribe(
             `/topic/document/${documentId}`,
             (message) => {
                 const data = JSON.parse(message.body);
-
-                // 1. Ignora se for eu mesmo
                 if (data.senderId === this.clientId) return;
-
-                // 2. Ignora se a mensagem for de um documento que não estou mais editando
                 if (data.documentId.toString() !== this.documentId.toString()) return;
-
                 this.renderMessage(data.content);
             }
         );
     },
 
-    // Abre o modal de criação de documento e limpa o campo de nome
+    // === DOCUMENTOS ===
+
     abrirModal() {
         const input = document.getElementById("inputNome");
         input.value = "";
@@ -74,23 +169,28 @@ const app = {
         input.focus();
     },
 
-    // Fecha o modal de criação sem fazer nada
     fecharModal() {
         document.getElementById("modalNome").classList.add("hidden");
     },
 
-    // Busca a lista de documentos existentes na API
+    setLoading(visible) {
+        document.getElementById("loadingOverlay").classList.toggle("hidden", !visible);
+    },
+
     async buscarDocumentos() {
         try {
-            const response = await fetch("/documents");
+            const response = await fetch("/documents", {
+                headers: this.authHeader()
+            });
 
-            if (!response.ok) {
-                throw new Error("Erro na requisição");
+            if (response.status === 401) {
+                this.logout();
+                return;
             }
 
-            const data = await response.json();
+            if (!response.ok) throw new Error("Erro ao carregar documentos.");
 
-            // Armazena localmente para uso no filtro de busca
+            const data = await response.json();
             this.documentos = data;
             this.renderLista(data);
 
@@ -100,84 +200,85 @@ const app = {
         }
     },
 
-    // Renderiza a lista de documentos na tela inicial
     renderLista(lista) {
         const container = document.getElementById("listaDocumentos");
         container.innerHTML = "";
 
+        if (lista.length === 0) {
+            container.innerHTML = `<p style="color: rgba(255,255,255,0.6); margin-top: 10px;">Nenhum documento encontrado.</p>`;
+            return;
+        }
+
         lista.forEach(doc => {
             const div = document.createElement("div");
-            div.style.cursor = "pointer";
-            div.style.padding = "10px";
-            div.style.borderBottom = "1px solid #ccc";
-
+            div.classList.add("doc-item");
             const p = document.createElement("p");
-            // Usa o nome do documento ou um fallback com o ID
             p.textContent = doc.name || `Documento ${doc.id}`;
-
             div.appendChild(p);
-
-            // Clique no item abre o documento correspondente
-            div.addEventListener("click", () => {
-                this.abrirDocumento(doc.id);
-            });
-
+            div.addEventListener("click", () => this.abrirDocumento(doc.id));
             container.appendChild(div);
         });
     },
 
-    // Filtra os documentos exibidos com base no texto digitado na busca
     filtrarDocumentos() {
         const texto = document.getElementById("docInput").value.toLowerCase();
-
         const filtrados = this.documentos.filter(doc =>
             doc.id.toString().includes(texto) ||
-            (doc.nome && doc.nome.toLowerCase().includes(texto))
+            (doc.name && doc.name.toLowerCase().includes(texto))
         );
-
         this.renderLista(filtrados);
     },
 
-    // Carrega um documento pelo ID, exibe o editor e se inscreve no tópico WebSocket
     async abrirDocumento(id) {
         this.documentId = id;
-
-        // Troca a tela inicial pela página do editor
-        document.getElementById("home").classList.add("hidden");
-        document.getElementById("editorPage").classList.remove("hidden");
+        this.setLoading(true);
 
         try {
-            const response = await fetch(`/documents/${id}`);
+            const response = await fetch(`/documents/${id}`, {
+                headers: this.authHeader()
+            });
+
+            if (response.status === 401) { this.logout(); return; }
+            if (!response.ok) throw new Error(`Erro ao buscar documento: ${response.status}`);
+
             const doc = await response.json();
 
+            document.getElementById("editor").innerText = "";
+            document.getElementById("home").classList.add("hidden");
+            document.getElementById("editorPage").classList.remove("hidden");
+
             this.documentoAtual = doc;
-
-            // Inicializa o lastContent para evitar envio imediato após abertura
             this.lastContent = doc.content || "";
-
             this.renderMessage(doc.content || "");
+            this.subscribe(id);
+
         } catch (e) {
             console.error("Erro ao carregar documento", e);
+            this.pendingSubscribe = null;
+            this.documentId = 0;
+            this.setLoading(false);
+            alert("Não foi possível carregar o documento.");
+            this.voltar();
+        } finally {
+            this.setLoading(false);
         }
-
-        // Começa a ouvir atualizações em tempo real deste documento
-        this.subscribe(id);
     },
 
-    // Retorna para a tela inicial sem salvar (o envio já acontece em tempo real)
     voltar() {
+        if (this.subscription) {
+            this.subscription.unsubscribe();
+            this.subscription = null;
+        }
+        this.documentoAtual = null;
+        this.documentId = 0;
         document.getElementById("home").classList.remove("hidden");
         document.getElementById("editorPage").classList.add("hidden");
     },
 
-    // Atualiza o conteúdo do editor sem sobrescrever a posição do cursor desnecessariamente
     renderMessage(content) {
         const editor = document.getElementById("editor");
-
-        // Conteúdo idêntico: nenhuma atualização necessária
         if (editor.innerText === content) return;
 
-        // Salva a posição do cursor antes de atualizar o conteúdo
         const selection = window.getSelection();
         const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
         const offset = range ? range.startOffset : 0;
@@ -185,12 +286,10 @@ const app = {
         editor.innerText = content;
         this.lastContent = content;
 
-        // Tenta restaurar a posição do cursor após a atualização
         if (range) {
             const newRange = document.createRange();
             const textNode = editor.firstChild || editor;
             try {
-                // Garante que o offset não ultrapasse o tamanho do nó de texto
                 const newOffset = Math.min(offset, textNode.length || 0);
                 newRange.setStart(textNode, newOffset);
                 newRange.collapse(true);
@@ -202,105 +301,106 @@ const app = {
         }
     },
 
-    // Valida o nome, chama a API para criar o documento e abre o editor
     async confirmarNome() {
-        const nome = document.getElementById("inputNome").value;
-        if (!nome || !nome.trim()) {
-            alert("Nome inválido!");
-            return;
-        }
+        const nome = document.getElementById("inputNome").value.trim();
+        if (!nome) { alert("Nome inválido!"); return; }
 
+        this.setLoading(true);
         try {
             const response = await fetch("/documents/criarDocumento", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: this.authHeader(),
                 body: JSON.stringify({ name: nome })
             });
 
+            if (response.status === 401) { this.logout(); return; }
             if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
 
             const docSalvo = await response.json();
-
-            // Atualiza o estado com os dados reais retornados pelo banco
             this.documentId = docSalvo.id;
             this.documentoAtual = docSalvo;
             this.lastContent = "";
 
-            // Prepara o editor: limpa conteúdo e exibe a página
             const editor = document.getElementById("editor");
             editor.innerHTML = "";
-
             document.getElementById("home").classList.add("hidden");
             document.getElementById("editorPage").classList.remove("hidden");
             this.fecharModal();
             editor.focus();
-
-            // Inscreve no tópico WebSocket do novo documento
             this.subscribe(this.documentId);
-
-            console.log("Documento criado com ID:", this.documentId);
 
         } catch (error) {
             console.error("Erro ao criar documento:", error);
             alert("Não foi possível criar o documento.");
+        } finally {
+            this.setLoading(false);
         }
     },
 
-    // Registra todos os event listeners e inicia a conexão WebSocket
+    // === EVENTOS ===
+
     bindEvents() {
         const editor = document.getElementById("editor");
         const input = document.getElementById("inputNome");
         const modal = document.getElementById("modalNome");
 
-        this.connect();
-
-        // Enter no input do modal confirma a criação do documento
         input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-                this.confirmarNome();
-            }
+            if (e.key === "Enter") this.confirmarNome();
         });
 
-        // Clique fora do modal (no overlay) fecha o modal
+        document.getElementById("loginUsername").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") this.login();
+        });
+
+        document.getElementById("loginPassword").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") this.login();
+        });
+
         modal.addEventListener("click", (e) => {
-            if (e.target === modal) {
-                this.fecharModal();
+            if (e.target === modal) this.fecharModal();
+        });
+
+        modal.addEventListener("keydown", (e) => {
+            if (e.key !== "Tab") return;
+            const focusable = modal.querySelectorAll("input, button");
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey ? document.activeElement === first : document.activeElement === last) {
+                e.preventDefault();
+                (e.shiftKey ? last : first).focus();
             }
         });
 
         let timeout;
-
-        // Envia o conteúdo ao servidor com debounce de 100ms após cada digitação
         editor.addEventListener("input", () => {
             clearTimeout(timeout);
             timeout = setTimeout(() => {
-                // Aborta se não houver conexão ativa ou documento aberto
                 if (!this.stompClient || !this.stompClient.connected) return;
                 if (!this.documentoAtual) return;
-
                 const content = editor.innerText;
-
-                // Não envia se o conteúdo não mudou desde o último envio
                 if (content === this.lastContent) return;
                 this.lastContent = content;
-
-                // Envia a atualização via STOMP com ID do documento, conteúdo e ID do remetente
                 this.stompClient.send("/app/edit", {}, JSON.stringify({
                     documentId: this.documentId,
                     content: content,
                     senderId: this.clientId
                 }));
-            }, 100);
+            }, 300);
         });
     },
 
-    // Ponto de entrada: inicializa eventos e carrega os documentos existentes
     init() {
         this.bindEvents();
-        this.buscarDocumentos();
+        // Se já tem token salvo, vai direto para a home
+        if (this.getToken()) {
+            this.mostrarHome();
+            this.buscarDocumentos();
+            this.connect();
+        } else {
+            this.mostrarLogin();
+        }
     }
 };
 
-// Expõe o app globalmente (necessário para os handlers onclick no HTML)
 window.app = app;
 app.init();
