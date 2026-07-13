@@ -1,0 +1,14 @@
+FROM postgres:16-alpine
+
+RUN apk add --no-cache python3 py3-pip curl bash && \
+    pip3 install patroni[etcd3] psycopg2-binary --break-system-packages
+
+# Cria usuário não-root para rodar o Patroni
+RUN mkdir -p /data/postgres && chown -R postgres:postgres /data/postgres
+
+COPY patroni.yml /etc/patroni.yml
+RUN chown postgres:postgres /etc/patroni.yml
+
+USER postgres
+
+CMD ["patroni", "/etc/patroni.yml"]

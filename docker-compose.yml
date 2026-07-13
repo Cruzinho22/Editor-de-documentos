@@ -1,130 +1,118 @@
 services:
-  postgres-pgpool:
-    image: pgpool/pgpool:4.4.2
-    container_name: postgres-pgpool
-    ports:
-      - "5432:9999"
-    depends_on:
-      - postgres-primary
-      - postgres-replica
+  # --- ETCD (consenso distribuído) ---
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: etcd
     environment:
-      - PGPOOL_PARAMS_BACKEND_HOSTNAME0=172.31.25.2
-      - PGPOOL_PARAMS_BACKEND_PORT0=5432
-      - PGPOOL_PARAMS_BACKEND_HOSTNAME1=172.31.25.3
-      - PGPOOL_PARAMS_BACKEND_PORT1=5432
-      - PGPOOL_PARAMS_ENABLE_LOAD_BALANCE=on
-
-      - PGPOOL_PARAMS_ALLOW_CLEAR_TEXT_AUTH=on
-      - PGPOOL_KEY_IN_FILE=off
-      - PGPOOL_PARAMS_ENABLE_POOL_HBA=off
-      - PGPOOL_PARAMS_CONNECTION_CACHE=off
-
-      - PGPOOL_PARAMS_PRIMARY_DATABASE_NAME=editor_colaborativo
-      - PGPOOL_PARAMS_HEALTH_CHECK_DATABASE=editor_colaborativo
-
-      - PGPOOL_PARAMS_SR_CHECK_USER=postgres
-      - PGPOOL_PARAMS_SR_CHECK_PASSWORD=editor_password
-      - PGPOOL_PARAMS_SR_CHECK_DATABASE=editor_colaborativo
-      - PGPOOL_PARAMS_HEALTH_CHECK_USER=postgres
-      - PGPOOL_PARAMS_HEALTH_CHECK_PASSWORD=editor_password
-
-      - PGPOOL_PARAMS_FAILOVER_ON_BACKEND_ERROR=off
-      - PGPOOL_PARAMS_HEALTH_CHECK_MAX_RETRY=10
-      - PGPOOL_PARAMS_HEALTH_CHECK_RETRY_DELAY=3
-      - PGPOOL_PARAMS_CONNECT_TIMEOUT=5
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "9999"]
-      interval: 3s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_DATA_DIR=/etcd-data
+    volumes:
+      - etcd_data:/etcd-data
     networks:
       collab-network:
-        ipv4_address: 172.31.25.4
+        ipv4_address: 172.31.25.5
 
-  # --- BANCO PRIMÁRIO ---
+  # --- POSTGRES PRIMÁRIO COM PATRONI ---
   postgres-primary:
-    image: postgres:16-alpine
+    image: patroni-postgres
+    build:
+      context: .
+      dockerfile: Dockerfile.patroni
     container_name: postgres-primary
     environment:
-      - POSTGRES_DB=editor_colaborativo
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=editor_password
-      - POSTGRES_HOST_AUTH_METHOD=trust
-    entrypoint:
-      - sh
-      - -c
-      - |
-        mkdir -p /docker-entrypoint-initdb.d
-        echo "CREATE USER luccas_user WITH SUPERUSER PASSWORD 'editor_password';" > /docker-entrypoint-initdb.d/01_init.sql
-        echo 'echo "host replication all 0.0.0.0/0 trust" >> /var/lib/postgresql/data/pg_hba.conf' > /docker-entrypoint-initdb.d/02_hba.sh
-        
-        exec docker-entrypoint.sh postgres -c wal_level=replica -c max_wal_senders=10 -c max_replication_slots=10
+      - PATRONI_NAME=postgres-primary
+      - PATRONI_POSTGRESQL_DATA_DIR=/data/postgres
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=172.31.25.2:5432
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=172.31.25.2:8008
+      - PATRONI_ETCD3_HOSTS=etcd:2379
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=editor_password
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=editor_password
+      - PATRONI_SCOPE=collab-cluster
     volumes:
-      - postgres_primary_data:/var/lib/postgresql/data
+      - postgres_primary_data:/data/postgres
     networks:
       collab-network:
         ipv4_address: 172.31.25.2
 
-  # --- BANCO RÉPLICA ---
+  # --- POSTGRES RÉPLICA COM PATRONI ---
   postgres-replica:
-    image: postgres:16-alpine
+    image: patroni-postgres
+    build:
+      context: .
+      dockerfile: Dockerfile.patroni
     container_name: postgres-replica
     depends_on:
       - postgres-primary
     environment:
-      - POSTGRES_PASSWORD=editor_password
-      - POSTGRES_HOST_AUTH_METHOD=trust
-    entrypoint:
-      - sh
-      - -c
-      - |
-        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
-          until pg_isready -h 172.31.25.2 -p 5432 -U postgres; do sleep 2; done
-          pg_basebackup -h 172.31.25.2 -D /var/lib/postgresql/data -U postgres -v -P -R -X stream
-          chown -R postgres:postgres /var/lib/postgresql/data
-          chmod 700 /var/lib/postgresql/data # CORREÇÃO: Força a permissão exigida pelo Postgres
-        fi
-        exec docker-entrypoint.sh postgres
+      - PATRONI_NAME=postgres-replica
+      - PATRONI_POSTGRESQL_DATA_DIR=/data/postgres
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=172.31.25.3:5432
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=172.31.25.3:8008
+      - PATRONI_ETCD3_HOSTS=etcd:2379
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=editor_password
+      - PATRONI_REPLICATION_USERNAME=replicator
+      - PATRONI_REPLICATION_PASSWORD=editor_password
+      - PATRONI_SCOPE=collab-cluster
     volumes:
-      - postgres_replica_data:/var/lib/postgresql/data
+      - postgres_replica_data:/data/postgres
     networks:
       collab-network:
         ipv4_address: 172.31.25.3
 
-  # --- INSTÂNCIA JAVA 1 ---
+  haproxy:
+    image: haproxy:2.8
+    container_name: haproxy
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "5432:5432"
+    depends_on:
+      - postgres-primary
+      - postgres-replica
+    networks:
+      collab-network:
+        ipv4_address: 172.31.25.4
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   collab-app-1:
     build: .
     image: collab-editor-app-instance-1
     container_name: collab-app-1
     depends_on:
-      postgres-pgpool:
+      haproxy:
         condition: service_healthy
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-pgpool:9999/editor_colaborativo
-      - SPRING_DATASOURCE_USERNAME=luccas_user
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://haproxy:5432/editor_colaborativo
+      - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=editor_password
     restart: on-failure
     networks:
       - collab-network
 
-  # --- INSTÂNCIA JAVA 2 ---
   collab-app-2:
     build: .
     image: collab-editor-app-instance-2
     container_name: collab-app-2
     depends_on:
-      postgres-pgpool:
+      haproxy:
         condition: service_healthy
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-pgpool:9999/editor_colaborativo
-      - SPRING_DATASOURCE_USERNAME=luccas_user
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://haproxy:5432/editor_colaborativo
+      - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=editor_password
     restart: on-failure
     networks:
       - collab-network
 
-  # --- PROXY NGINX ---
   collab-nginx:
     image: nginx:alpine
     container_name: collab-nginx
@@ -141,6 +129,7 @@ services:
 volumes:
   postgres_primary_data:
   postgres_replica_data:
+  etcd_data:
 
 networks:
   collab-network:
